@@ -1,38 +1,77 @@
 {
-    "name": "bilibili-api-ts",
-    "version": "12.0.0",
-    "description": "Python bilibili-api 的 Typescript 克隆，适用于 JS/TS",
-    "types": "*.d.ts",
-    "scripts": {
-        "test": "npm run build && node tests/main.js",
-        "build": "tsc -p tsconfig.json"
+  "name": "@yukariyukaro/bilibili-api-ts",
+  "version": "17.4.1",
+  "description": "bilibili-api-python 17.4.1 的 TypeScript 移植；已实现搜索、视频、评论、用户、私信、热门等核心模块，接口与请求签名与 Python 版保持一致。",
+  "license": "GPL-3.0-or-later",
+  "author": "yukariyukaro",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/nemo2011/bilibili-api.git"
+    "./search": {
+      "types": "./dist/search.d.ts",
+      "require": "./dist/search.js",
+      "default": "./dist/search.js"
     },
-    "keywords": [],
-    "author": "Nemo2011",
-    "license": "GPL-3.0-or-later",
-    "bugs": {
-        "url": "https://github.com/nemo2011/bilibili-api/issues"
+    "./video": {
+      "types": "./dist/video.d.ts",
+      "require": "./dist/video.js",
+      "default": "./dist/video.js"
     },
-    "homepage": "https://github.com/Nemo2011/bilibili_api/blob/main/bilibili-api-ts/README.md",
-    "dependencies": {
-        "@protobufjs/float": "^1.0.2",
-        "@types/node": "^18.0.3",
-        "@types/tough-cookie": "^4.0.2",
-        "axios": "^0.27.2",
-        "axios-cookiejar-support": "^4.0.2",
-        "crypto": "^1.0.1",
-        "dependencies": "^0.0.1",
-        "tough-cookie": "^4.0.0",
-        "typescript": "^4.7.3",
-        "varint": "^6.0.0"
+    "./comment": {
+      "types": "./dist/comment.d.ts",
+      "require": "./dist/comment.js",
+      "default": "./dist/comment.js"
     },
-    "devDependencies": {
-        "@types/node": "^18.0.3",
-        "@types/tough-cookie": "^4.0.2"
-    }, 
-    "main": "index.js"
+    "./user": {
+      "types": "./dist/user.d.ts",
+      "require": "./dist/user.js",
+      "default": "./dist/user.js"
+    },
+    "./session": {
+      "types": "./dist/session.d.ts",
+      "require": "./dist/session.js",
+      "default": "./dist/session.js"
+    },
+    "./hot": {
+      "types": "./dist/hot.d.ts",
+      "require": "./dist/hot.js",
+      "default": "./dist/hot.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "sync:api": "node scripts/sync-api.mjs",
+    "test": "npm run build && node --test tests/api-parity.test.mjs tests/network-offline.test.mjs tests/interface-parity.test.mjs",
+    "e2e": "npm run build && node tests/e2e.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yukariyukaro/bilibili-api-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yukariyukaro/bilibili-api-ts/issues"
+  },
+  "homepage": "https://github.com/yukariyukaro/bilibili-api-ts",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
 }

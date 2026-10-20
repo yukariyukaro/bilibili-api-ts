@@ -1,186 +1,146 @@
-<div align="center">
+# @yukariyukaro/bilibili-api-ts
 
-![bilibili-api logo](https://raw.githubusercontent.com/nemo2011/bilibili-api/main/design/logo-small.png)
+`bilibili-api-python` 的 TypeScript 移植，基准为 Python 仓库 `0147ab61aa5a9f821c9b441cb1ddfdc761a3d999`（17.4.1）。
 
-# bilibili-api **typescript** 分部
+目标不是“另写一个 B 站客户端”，而是让同一份接口定义、同一套请求签名和同一组参数在两个语言里保持一致。
 
-<img src="https://cdn.iconscout.com/icon/free/png-512/typescript-1174965.png" height=50 width=50><img src="https://logos-download.com/wp-content/uploads/2019/01/JavaScript_Logo.png" height=50 width=50><img src="https://tse4-mm.cn.bing.net/th/id/OIP-C.bodQFDX6bpdw0aj11XxjrAHaCi?pid=ImgDet&rs=1" height=50>
+## 多仓库布局
 
-![LICENSE](https://img.shields.io/badge/LICENSE-GPLv3-red)
-![STARS](https://img.shields.io/github/stars/nemo2011/bilibili-api?color=yellow&label=Github%20Stars)
+| 仓库 | 角色 |
+| --- | --- |
+| `bilibili-api-python` | 接口数据与行为的基准，`bilibili_api/data/api/*.json` 是唯一事实来源 |
+| `bilibili-api-ts` | 本仓库，TypeScript 实现与 npm 包 |
+| `dsh-bili-scroll` | 通过 `bilibili` 命令消费上述能力的 CLI 与 Skill |
 
+本仓库的 `scripts/sync-api.mjs` 直接读取 Python 仓库的 43 个 API JSON 文件，生成 `src/data/api/*.ts`，同时把源文件留档到 `vendor/api/`。脚本会从当前目录向上逐级查找 `bilibili-api-python/bilibili_api/data/api`，找不到时（例如 CI 只检出本仓库）自动回退到 `vendor/api/`；也可用 `BILIBILI_API_PYTHON_DIR` 指定路径。任何接口定义变更都应先在 Python 侧发生，再执行 `npm run sync:api`。
 
-</div>
+## 安装
 
-# 简介
-
-这里是 Python 模块 [bilibili-api](https://github.com/nemo2011/bilibili-api) 的 Typescript 克隆，适用于 JS/TS
-
-**注意：本仓库全都是异步操作，而且是 `ajax`，就是那种代码跑完了结果你的结果才刚刚出来的那种，不 `await` 后果自负。**
-
-如果您是新手，请务必看完这个 `readme`，里面有许多重要的信息。
-
-## 特色
-
-- 全面支持 javascript 和 typescript
-- 可使用代理，绕过 b 站风控策略。
-- 全面支持 BV 号（bvid），同时也兼容 AV 号（aid）。
-- 调用简便，函数命名易懂，代码注释详细。
-- 依赖少，无需第三方命令行工具，装完即用，无需其他配置。
-- 更多的 API 敬请期待！
-
-# 快速上手
-
-首先，使用以下命令安装：
-
-```
-$ npm install bilibili-api-ts
+```bash
+npm install @yukariyukaro/bilibili-api-ts
 ```
 
-或者在 `package.json` 中添加依赖。
+要求 Node.js 18+，无运行时第三方依赖。
 
-接下来让我们获取视频播放量等信息：
+## 快速开始
 
-``` javascript
-const video = require("bilibili-api-ts/video.js");
+```js
+const {
+  Credential,
+  Video,
+  search_by_type,
+  SearchObjectType,
+  get_self_info,
+} = require("@yukariyukaro/bilibili-api-ts");
 
-// 实例化 Video 类
-var v = new video.Video({
-    bvid: "BV1uv411q7Mv"
+const credential = new Credential({
+  sessdata: process.env.SESSDATA,
+  bili_jct: process.env.BILI_JCT,
+  buvid3: process.env.BUVID3,
+  dedeuserid: process.env.DEDEUSERID,
 });
 
-(async function(){
-    console.log(await v.get_info());
+(async () => {
+  const self = await get_self_info(credential);
+  console.log(self.mid);
+
+  const result = await search_by_type({
+    keyword: "B站",
+    search_type: SearchObjectType.VIDEO,
+    page: 1,
+    page_size: 10,
+  });
+  console.log(result.result.length);
+
+  const video = new Video({ bvid: "BV1uv411q7Mv", credential });
+  const info = await video.get_info();
+  const pages = await video.get_pages();
+  const player = await video.get_player_info({ cid: pages[0].cid });
+  console.log(info.title, player.subtitle.subtitles);
 })();
 ```
 
-输出（已格式化，已省略部分）：
+### 私信
 
-```json
-{
-    "bvid": "BV1uv411q7Mv",
-    "aid": 243922477,
-    "videos": 1,
-    "tid": 17,
-    "tname": "单机游戏",
-    "copyright": 1,
-    "pic": "http://i2.hdslb.com/bfs/archive/82e52df9d0221836c260c82f2890e3761a46716b.jpg",
-    "title": "爆肝９８小时！在 MC 中还原糖调小镇",
-    "pubdate": 1595203214,
-    "ctime": 1595168654,
-    ...and more
-}
+```js
+const { Credential, EventType, fetch_session_msgs, send_msg } = require("@yukariyukaro/bilibili-api-ts");
+
+const credential = new Credential({ sessdata, bili_jct, buvid3, dedeuserid });
+
+// 读取与某个用户的最近 30 条消息（接口单次上限，固定 size=30）
+await fetch_session_msgs({ talker_id: 946974, credential });
+
+// 发送纯文本
+await send_msg({ credential, receiver_id: 946974, msg_type: EventType.TEXT, content: "你好" });
 ```
 
----
+发送私信属于写操作。CLI 层仍应保留“写开关 + 逐次确认 + 审计”，库本身不做额度或收件人白名单。
 
-如何给这个视频点赞？我们需要登录自己的账号。
+## 与 Python 版的一致性
 
-这里设计是传入一个 Credential 类，获取所需的信息参照：[获取 Credential 类所需信息][get-credential]
+| 层 | 状态 |
+| --- | --- |
+| 43 个 `data/api/*.json` | 由脚本全量生成，逐文件 deep-equal 校验 |
+| WBI（`w_rid` / `wts` / mixin key） | 与 Python 固定向量逐字节一致 |
+| WBI2（`dm_img_*`） | 已实现，字段与 Python 相同 |
+| CSRF / Cookie / `buvid3` / `buvid4` | 已实现；`buvid` 通过 SPI 获取 |
+| APP 签名（`appkey` / `sign`） | 已实现，与 Python 固定向量一致 |
+| `-403` WBI 重试 | 已实现，默认 3 次 |
+| BV / AV 互转 | 已实现 |
 
-下面的代码将会给视频点赞
+已移植的模块：
 
-```javascript
-const bilibili = require("bilibili-api-ts");
-const video = require("bilibili-api-ts/video.js");
+- `search`：`search`、`search_by_type`、热搜、建议词
+- `video`：`Video`、`get_info`、`get_pages`、`get_player_info`、`get_subtitle`、`get_tags`、`get_download_url`
+- `comment`：`get_comments`、`get_comments_lazy`、`send_comment`、`Comment`（楼中楼、删除、点赞、点踩、置顶、举报）
+- `user`：`get_user_info`（含 `w_webid`）、`get_relation`、`get_relation_info`、`get_self_info`、空间公告、关注操作
+- `session`：私信收发、会话列表、会话详情、回复/点赞/@ 通知、未读计数、系统消息、消息设置
+- `hot`：热门视频、每周必看、入站必刷、热词
 
-// 实例化 Video 类
-var v = new video.Video({
-    bvid: "BVxxxxxxxxxx", 
-    credential: new  bilibili.Credential({
-        sessdata: "xxx", 
-        bili_jct: "xxx", 
-        dedeuserid: "xxx"
-    })
-});
+尚未移植：
 
-(async function(){
-    await v.like({
-        status: true
-    });
-})();
+- `live`、`dynamic`、`bangumi`、`manga`、`audio`、`article`、`opus`、`favorite_list`、`video_uploader`、`creative_center` 等模块。对应的 API 数据已经生成，补模块时不需要再抄接口。
+- `Credential.refresh()`（Cookie 刷新）与 `Session` 轮询监听类。
+- 图片评论、图片私信、代理。Node 原生 `fetch` 不接受 `proxy` 选项；如有需要应传入自定义 `dispatcher`。
+
+## 测试
+
+```bash
+npm test
 ```
 
-# FA♂Q
+包含：
 
-**Q: 关于 API 调用的正确姿势是什么？**
+- 43 个 API JSON 与生成 TS 的逐文件一致性
+- 核心接口 URL / method
+- WBI、APP 签名、BV/AV 的 Python 固定向量
+- 私信发送字段名与类型
 
-A: API 调用传参方式请看下面的举例：
+真实接口回归默认关闭：
 
-```typescript
-// 错误 1: 传参
-// 设 video.get_info 函数的参数是一个字典，字典的 bvid 项为稿件 BVID。
-// 函数定义：get_info({bvid}: {bvid: string})
-/** 
- * 所有的参数传入请传入一个字典，这样子可以换传参顺序、指名传参。
- * 传参像这样：get_info({参数名1: 参数1, 参数名2: 参数2}) -> get_info({bvid: 稿件 BVID})
- * 请不要直接传参数，参数需要放在字典里，而且需要表明好键，不能不标键。
- */ 
-
-// 推荐
-video.get_info({bvid:"BV1uv411q7Mv"})
-
-// 当然也可以这样
-video.get_info({"bvid":"BV1uv411q7Mv"})
-
-// 不可以！
-video.get_info({"BV1uv411q7Mv"}) // 没有标明键(bvid)
-
-// 自己看 IntelliCode 的提示吧。
-video.get_info("BV1uv411q7Mv") // 传入字典啊！
-// ----------------------------------------------------------
-// 错误 2: 每个函数都得传参
-// 设 video.Video.prototype.get_aid 函数操作不用传任何参数：
-// 函数定义：get_aid({}){...}，仍然加一个空字典当参数
-/*
-    因为 JS/TS 的迷惑设计，函数都不能指名传参。
-    因此这里的设计是每一个函数都传入一个字典，像这样：{参数名1: 参数1, 参数名2: 参数2}，不用传参的函数暂时也还没有加上一个字典当参数。
-    后来实在因为强迫症，把不用参数的函数都加了一个空字典当参数，原来 get_aid() 变成 get_aid({})，这样的确有个好处：随便传参不报错。
-*/
-
-// 可以
-video.get_aid({})
-
-// 不会错
-video.get_aid({bvid: "我是个 SB"})
-
-// 建议不要这么做
-video.get_aid()
+```bash
+BILIBILI_E2E=1 npm run e2e
 ```
 
->如果有看不懂的地方，可以自己打一下示例代码(最好加上 IntelliCode 或在带实时提示的 Node REPL 下)，这样子自然而然就懂了。
-每一个函数请务必都传一下放着参数的字典。
+凭证默认读取 `%APPDATA%/bilibili-skill/bili_credential.json`（非 Windows 为 `~/.config/bilibili-skill/bili_credential.json`），也可用 `BILIBILI_CREDENTIAL_FILE` 指定。测试只输出数量与布尔状态，不打印凭证。
 
-**Q: 为什么会提示 412 Precondition Failed ？**
+可选变量：
 
-A: 你的请求速度太快了。造成请求速度过快的原因可能是你写了高并发的代码。
+- `BILIBILI_E2E_TALKER`：读取与该 UID 的最近私信
+- `BILIBILI_E2E_WRITE=1`、`BILIBILI_E2E_DM_UID`、`BILIBILI_E2E_DM_TEXT`：显式开启一次私信发送测试
 
-这种情况下，你的 IP 会暂时被封禁而无法使用，你可以设置代理绕过。
+真实回归覆盖：登录态、热门、搜索、视频详情、分 P、播放器与字幕、评论列表、楼中楼、用户资料、用户关系、会话列表、未读计数、回复/点赞/@ 通知、最近私信。
 
-```typescript
-import { set_proxy, Proxy } from "bilibili-api-ts"
-set_proxy(new Proxy({
-    host: "代理网址", 
-    port: "代理端口", 
-    username: "用户名（可选）", 
-    password: "密码（可选)"
-}))
+## 发布
+
+```bash
+npm run build
+npm pack
+npm publish --access public
 ```
 
-**Q: 怎么没有我想要的功能？**
+仓库内置 `.github/workflows/publish.yml`：推送 `v*` 标签后，用 `NPM_TOKEN` secret 自动发布。首次发布前需要确认 npm 账号拥有 `@yukariyukaro` scope；如果使用其他 scope，只需修改 `package.json` 的 `name`。
 
-A: 你可以发 Issue 来提交你的需求，但是，最好的办法是自己写（懒）
+## 许可证
 
-<span id="contribute">**Q: 我有一个大胆的想法，如何给代码库贡献？**</span>
-
-A: 请先 clone 本仓库一份，然后从 main 分支新建一个分支，在该分支上工作。
-如果你觉得已经可以了，请向项目仓库的 develop 分支发起 Pull request。
-如果你不明白这些操作的话，可以百度。完整指南：[CONTRIBUTING.md](https://github.com/nemo2011/bilibili-api/blob/javascript/.github/JAVASCRIPT.md)
-
-**Q: 稳定性怎么样？**
-
-A: 由于该模块比较特殊，是爬虫模块，如果 b 站的接口变更，可能会马上失效。因此请始终保证是最新版本。如果发现问题可以提 [Issues][issues-new]。
-
----
-
-[get-credential](https://nemo2011.github.io/bilibili-api/#/ts/get-credential)
+GPL-3.0-or-later。接口数据来自 [bilibili-api](https://github.com/Nemo2011/bilibili-api)，仅用于学习与测试，请遵守 B 站服务条款。

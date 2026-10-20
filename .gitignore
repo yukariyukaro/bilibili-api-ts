@@ -8,6 +8,7 @@
 *.ass
 *.srt
 node_modules/
+*.tgz
 *.proto
 *.bin
 site.bat
