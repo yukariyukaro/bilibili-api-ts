@@ -26,10 +26,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
           cache: npm
           cache-dependency-path: bilibili-api-ts/package-lock.json
+
+      # Trusted publishing 需要 npm >= 11.5.1；这里固定到支持 npm trust 的 11.15.x。
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@^11.15.0
 
       - run: npm ci
 
@@ -44,8 +48,28 @@ jobs:
 
       - run: npm pack --dry-run
 
-      # NPM_TOKEN 需要在仓库 Settings → Secrets and variables → Actions 中配置。
-      # 必须使用带 Bypass 2FA 的 Granular Access Token（Read and write，All packages）。
-      - run: npm publish --access public --provenance
+      # 先确认走哪条认证路径：配了 NPM_TOKEN 就用 token，否则交给 trusted publishing(OIDC)。
+      - name: Detect npm auth method
+        id: auth
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN}" ]; then
+            echo "method=token" >> "$GITHUB_OUTPUT"
+            echo "使用 NPM_TOKEN"
+            npm whoami
+          else
+            echo "method=oidc" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 NPM_TOKEN，改用 trusted publishing(OIDC)；需在 npmjs.com 为该包配置 GitHub 信任的发布者"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # NPM_TOKEN：带 Bypass 2FA 的 Granular Access Token（Read and write，All packages）。
+      - name: Publish with token
+        if: steps.auth.outputs.method == 'token'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish with trusted publishing
+        if: steps.auth.outputs.method == 'oidc'
+        run: npm publish --access public --provenance
