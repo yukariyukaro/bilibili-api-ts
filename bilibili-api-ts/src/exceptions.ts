@@ -7,6 +7,13 @@ export class BiliApiException extends Error {
 
 export class ArgsException extends BiliApiException {}
 
+/** 视频弹幕已被关闭（Python 同名异常）。 */
+export class DanmakuClosedException extends BiliApiException {
+  constructor(message = "视频弹幕已关闭") {
+    super(message);
+  }
+}
+
 export class ResponseCodeException extends BiliApiException {
   code: number;
   data: unknown;

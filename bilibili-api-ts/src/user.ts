@@ -65,6 +65,84 @@ export class User {
       .updateParams({ mid: this.__uid, ps, tid, pn, keyword, order })
       .result;
   }
+
+  // 有关合集与列表（对应 Python user.py「有关合集与列表」一节）
+
+  /** 查看频道内所有视频。仅供 series_list。 */
+  async get_channel_videos_series(
+    sid: number,
+    sort: any = "false",
+    pn: number = 1,
+    ps: number = 100,
+  ): Promise<any> {
+    const api = API.info.channel_video_series;
+    const params = {
+      mid: this.__uid,
+      series_id: sid,
+      pn,
+      ps,
+      sort: sort === "true" ? "asc" : "desc",
+    };
+    return new Api({ ...api, wbi: true, credential: this.credential }).updateParams(params).result;
+  }
+
+  /** 查看频道内所有视频。仅供 season_list。 */
+  async get_channel_videos_season(
+    sid: number,
+    sort: any = "false",
+    pn: number = 1,
+    ps: number = 100,
+  ): Promise<any> {
+    const api = API.info.channel_video_season;
+    const params = {
+      mid: this.__uid,
+      season_id: sid,
+      sort_reverse: sort,
+      page_num: pn,
+      page_size: ps,
+    };
+    return new Api({ ...api, wbi: true, credential: this.credential }).updateParams(params).result;
+  }
+
+  /** 查看用户所有的频道（包括新版）和部分视频。 */
+  async get_channel_list(pn: number = 1, ps: number = 20): Promise<any> {
+    const api = API.info.channel_list;
+    return new Api({ ...api, wbi: true, credential: this.credential })
+      .updateParams({ mid: this.__uid, page_num: pn, page_size: ps })
+      .result;
+  }
+
+  /** 获取用户所有合集。 */
+  async get_channels(): Promise<any[]> {
+    const { ChannelSeries, ChannelSeriesType, channel_meta_cache } = await import("./channel_series");
+    let seasonList: any[] = [];
+    let seriesList: any[] = [];
+    let pn = 1;
+    let channelData = await this.get_channel_list(pn, 20);
+    seasonList = channelData.items_lists.seasons_list;
+    seriesList = channelData.items_lists.series_list;
+    const total = channelData.items_lists.page.total;
+    let current = channelData.items_lists.page.page_size;
+    while (current < total) {
+      pn += 1;
+      channelData = await this.get_channel_list(pn, 20);
+      seasonList = seasonList.concat(channelData.items_lists.seasons_list);
+      seriesList = seriesList.concat(channelData.items_lists.series_list);
+      current += channelData.items_lists.page.page_size;
+    }
+    const channels: any[] = [];
+    for (const item of seasonList) {
+      const id = item.meta.season_id;
+      channel_meta_cache[String(ChannelSeriesType.SEASON) + "-" + String(id)] = item.meta;
+      channels.push(new ChannelSeries(this.__uid, ChannelSeriesType.SEASON, id, this.credential));
+    }
+    for (const item of seriesList) {
+      const id = item.meta.series_id;
+      channel_meta_cache[String(ChannelSeriesType.SERIES) + "-" + String(id)] = item.meta;
+      channels.push(new ChannelSeries(this.__uid, ChannelSeriesType.SERIES, id, this.credential));
+    }
+    return channels;
+  }
 }
 
 export async function get_self_info(credential: Credential): Promise<any> {

@@ -1,7 +1,7 @@
 {
   "name": "@yukariyukaro/bilibili-api-ts",
-  "version": "17.4.1",
-  "description": "bilibili-api-python 17.4.1 的 TypeScript 移植；已实现搜索、视频、评论、用户、私信、热门等核心模块，接口与请求签名与 Python 版保持一致。",
+  "version": "17.5.0",
+  "description": "bilibili-api-python 17.4.x 的 TypeScript 移植；已实现搜索、视频、评论、用户、私信、热门、动态、收藏夹、合集、创作中心、投稿与弹幕等模块，接口、请求签名与 Python 版保持一致。",
   "license": "GPL-3.0-or-later",
   "author": "yukariyukaro",
   "main": "dist/index.js",
@@ -41,6 +41,36 @@
       "types": "./dist/hot.d.ts",
       "require": "./dist/hot.js",
       "default": "./dist/hot.js"
+    },
+    "./dynamic": {
+      "types": "./dist/dynamic.d.ts",
+      "require": "./dist/dynamic.js",
+      "default": "./dist/dynamic.js"
+    },
+    "./favorite_list": {
+      "types": "./dist/favorite_list.d.ts",
+      "require": "./dist/favorite_list.js",
+      "default": "./dist/favorite_list.js"
+    },
+    "./channel_series": {
+      "types": "./dist/channel_series.d.ts",
+      "require": "./dist/channel_series.js",
+      "default": "./dist/channel_series.js"
+    },
+    "./creative_center": {
+      "types": "./dist/creative_center.d.ts",
+      "require": "./dist/creative_center.js",
+      "default": "./dist/creative_center.js"
+    },
+    "./emoji": {
+      "types": "./dist/emoji.d.ts",
+      "require": "./dist/emoji.js",
+      "default": "./dist/emoji.js"
+    },
+    "./video_uploader": {
+      "types": "./dist/video_uploader.d.ts",
+      "require": "./dist/video_uploader.js",
+      "default": "./dist/video_uploader.js"
     }
   },
   "files": [
@@ -54,7 +84,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "sync:api": "node scripts/sync-api.mjs",
-    "test": "npm run build && node --test tests/api-parity.test.mjs tests/network-offline.test.mjs tests/interface-parity.test.mjs",
+    "test": "npm run build && node --test tests/api-parity.test.mjs tests/network-offline.test.mjs tests/interface-parity.test.mjs tests/module-parity.test.mjs tests/request-contract.test.mjs",
     "e2e": "npm run build && node tests/e2e.mjs",
     "prepublishOnly": "npm test"
   },

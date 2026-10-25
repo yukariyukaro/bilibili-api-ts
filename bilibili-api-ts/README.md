@@ -2,6 +2,8 @@
 
 `bilibili-api-python` 的 TypeScript 移植，基准为 Python 仓库 `0147ab61aa5a9f821c9b441cb1ddfdc761a3d999`（17.4.1）。
 
+当前版本 **17.5.0**：在 17.4.1 的搜索 / 视频 / 评论 / 用户 / 私信 / 热门 / 排行榜之上，补齐了动态、收藏夹、合集、创作中心、投稿、表情与图片上传。
+
 目标不是“另写一个 B 站客户端”，而是让同一份接口定义、同一套请求签名和同一组参数在两个语言里保持一致。
 
 ## 多仓库布局
@@ -91,17 +93,35 @@ await send_msg({ credential, receiver_id: 946974, msg_type: EventType.TEXT, cont
 已移植的模块：
 
 - `search`：`search`、`search_by_type`、热搜、建议词
-- `video`：`Video`、`get_info`、`get_pages`、`get_player_info`、`get_subtitle`、`get_tags`、`get_download_url`
+- `video`：`Video`（信息、分 P、播放器与字幕、标签、下载地址）+ **互动**（`like`、`pay_coin`、`share`、`triple`、`set_favorite`、`add_tag`、`delete_tag`、`add_to_toview`）+ **详情**（`get_detail`、`get_chargers`、`get_video_snapshot`、`get_ai_conclusion`、`get_relation`、`has_liked`、`get_pay_coins`、`has_favoured`）+ **弹幕**（`get_danmaku_view`、`get_danmakus`、`get_special_dms`、`send_danmaku`、`like_danmaku`、`recall_danmaku`、`operate_danmaku`、`get_danmaku_xml`、`get_history_danmaku_index`、`has_liked_danmakus`、`get_danmaku_snapshot`）
 - `comment`：`get_comments`、`get_comments_lazy`、`send_comment`、`Comment`（楼中楼、删除、点赞、点踩、置顶、举报）
-- `user`：`get_user_info`（含 `w_webid`）、`get_relation`、`get_relation_info`、`get_self_info`、空间公告、关注操作
+- `user`：`get_user_info`（含 `w_webid`）、`get_relation`、`get_relation_info`、`get_self_info`、空间公告、关注操作、**合集**（`get_channels`、`get_channel_list`、`get_channel_videos_season`、`get_channel_videos_series`）
 - `session`：私信收发、会话列表、会话详情、回复/点赞/@ 通知、未读计数、系统消息、消息设置
 - `hot`：热门视频、每周必看、入站必刷、热词
+- **`dynamic`**：`BuildDynamic` 链式构建（纯文本 / @ / 表情 / 投票 / 图片 / 话题 / 定时）、`send_dynamic`、定时草案三件套、`Dynamic`（详情、点赞、转发、收藏、置顶、删除、抽奖信息、`markdown`）、关注动态与动态页列表
+- **`favorite_list`**：视频 / 专栏 / 课程 / 话题 / 笔记收藏夹的读取与增删改、复制、移动、清理、`FavoriteList` 类
+- **`channel_series`**：合集列表的创建 / 删除 / 增删视频 / 订阅，`ChannelSeries` 类
+- **`creative_center`**：数据概览与趋势、播放分析、粉丝数据、稿件管理、评论与弹幕管理、单稿章节与改稿历史
+- **`video_uploader`**：`upload_cover`、`VideoMeta`、`VideoUploader`（preupload + upos 分片 + 提交）、`VideoEditor`（改稿 / 换封面）、upos 线路探测、分区话题与活动
+- **`emoji`**：可用表情包、表情详情、添加表情
+- **`utils/picture`**：`Picture`（`load_url` / `from_file` / `from_content` / `upload` / `to_json`），图片尺寸由文件头解析，不依赖图像库
+- **文件上传 / 二进制响应**：`Api.updateFiles()` 支持 multipart（字段名、文件名规则与 Python 的 curl_cffi 行为一致）；`Api.requestBytes()` 对应 Python 的 `request(byte=True)`
+- **`utils/BytesReader`**：protobuf 手工解析器（varint / 定长 / length-delimited），弹幕 `.so` 用
+- **`utils/danmaku`**：`Danmaku` / `SpecialDanmaku`（属性名与 Python 一致，含 `to_xml` 与 `crack_uid`）
 
 尚未移植：
 
-- `live`、`dynamic`、`bangumi`、`manga`、`audio`、`article`、`opus`、`favorite_list`、`video_uploader`、`creative_center` 等模块。对应的 API 数据已经生成，补模块时不需要再抄接口。
+- `live`、`bangumi`、`manga`、`audio`、`article`、`opus`、`note` 等模块。对应的 API 数据已经生成，补模块时不需要再抄接口。
 - `Credential.refresh()`（Cookie 刷新）与 `Session` 轮询监听类。
-- 图片评论、图片私信、代理。Node 原生 `fetch` 不接受 `proxy` 选项；如有需要应传入自定义 `dispatcher`。
+- `Picture.convert_format` / `Picture.resize`（依赖 Python 的 PIL，会抛出明确错误）。
+- `dynamic.turn_to_article` / `turn_to_opus`（依赖未移植的 article / opus 模块，会抛出明确错误）。
+- 代理。Node 原生 `fetch` 不接受 `proxy` 选项；如有需要应传入自定义 `dispatcher`。
+- `get_danmaku_view` 里的折叠弹幕（字段 9）与图文弹幕（字段 12）保留原始字节，未逐字段解析。
+
+### 与 Python 有意不同的两处
+
+- `Video.get_danmakus` 按 protobuf 的 **wire type** 跳读未知字段。Python 版假设顶层只会出现字段 1；真实响应里出现过「字段号 1 + wire type 0」的变体，逐字移植会直接错位（Py 版同样会挂）。正常响应下解析结果完全一致。
+- `Video.recall_danmaku` 的参数放进 query；Python 版对 GET 请求仍放在 body 里，多数客户端/服务端会丢掉。
 
 ## 测试
 
@@ -109,12 +129,14 @@ await send_msg({ credential, receiver_id: 946974, msg_type: EventType.TEXT, cont
 npm test
 ```
 
-包含：
+包含（全部离线，不访问 B 站、不读凭证）：
 
 - 43 个 API JSON 与生成 TS 的逐文件一致性
 - 核心接口 URL / method
 - WBI、APP 签名、BV/AV 的 Python 固定向量
 - 私信发送字段名与类型
+- `module-parity`：每个模块的公开导出面必须与 Python 侧逐个对齐（含 `Video` / `User` 新增方法）
+- `request-contract`：用 fetch 探针拦截**真正会发出的请求**，逐个断言 URL、method、关键字段、CSRF 与 multipart 形态；写操作缺 `bili_jct` 时必须在发请求前抛错
 
 真实接口回归默认关闭：
 

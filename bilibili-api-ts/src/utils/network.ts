@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { apiData } from "../data/api/index";
 import {
   ArgsException,
@@ -91,6 +92,62 @@ function encodeForm(data: Record<string, any>): string {
   return encodePairs(data, true)
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
+}
+
+export interface BiliAPIFile {
+  /** 本地文件路径，或 file:// 路径。与 content 二选一。 */
+  path?: string;
+  /** 例如 image/png、video/mp4。 */
+  mimeType: string;
+  /** 内存中的文件内容，给出时不再读磁盘。 */
+  content?: Buffer | Uint8Array;
+  /** 覆盖默认的「序号.扩展名」文件名。 */
+  filename?: string;
+}
+
+function fileExtensionOf(filePath: string): string {
+  const base = filePath.split(/[\\/]/).pop() || "";
+  const parts = base.split(".");
+  return parts.length > 1 ? parts[1] : "";
+}
+
+const EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/bmp": "bmp",
+  "video/mp4": "mp4",
+};
+
+function mimeExtensionOf(mimeType: string): string {
+  return EXT_BY_MIME[mimeType] || (mimeType.split("/")[1] || "").split("+")[0].split(";")[0];
+}
+
+/**
+ * 与 Python 版（curl_cffi CurlMime）保持一致：字段名为 key，文件名固定为「序号.扩展名」，
+ * data 里的普通字段也作为 multipart part 一并发送。
+ */
+function buildMultipartBody(
+  data: Record<string, any>,
+  files: Record<string, BiliAPIFile>,
+): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) continue;
+    form.append(key, typeof value === "string" ? value : pyStr(value));
+  }
+  let counter = 1;
+  for (const [key, item] of Object.entries(files)) {
+    const ext = item.path ? fileExtensionOf(item.path) : mimeExtensionOf(item.mimeType);
+    const filename = item.filename || (ext ? counter + "." + ext : String(counter));
+    const buffer = item.content !== undefined && item.content !== null
+      ? Buffer.from(item.content)
+      : readFileSync((item.path || "").replace(/^file:\/\//, ""));
+    form.append(key, new Blob([buffer], { type: item.mimeType }), filename);
+    counter += 1;
+  }
+  return form;
 }
 
 export const requestSettings = {
@@ -276,9 +333,12 @@ export interface RawRequestOptions {
   headers?: Record<string, string>;
   cookies?: Record<string, string>;
   jsonBody?: boolean;
+  files?: Record<string, BiliAPIFile>;
 }
 
-export async function rawRequest(options: RawRequestOptions): Promise<{ status: number; headers: Headers; text: string; url: string }> {
+export async function rawRequest(
+  options: RawRequestOptions,
+): Promise<{ status: number; headers: Headers; text: string; bytes: Buffer; url: string }> {
   const method = options.method.toUpperCase();
   const params = options.params || {};
   const query = encodeQuery(params);
@@ -291,8 +351,15 @@ export async function rawRequest(options: RawRequestOptions): Promise<{ status: 
     .join("; ");
   if (cookie && !headers.Cookie) headers.Cookie = cookie;
 
-  let body: string | undefined;
-  if (method !== "GET" && method !== "HEAD" && options.data !== undefined) {
+  let body: string | FormData | undefined;
+  const files = options.files || {};
+  if (Object.keys(files).length > 0 && method !== "GET" && method !== "HEAD") {
+    // multipart 由 fetch 自己生成 boundary，不能手写 Content-Type。
+    delete headers["Content-Type"];
+    delete headers["content-type"];
+    const data = typeof options.data === "string" || options.data === undefined ? {} : options.data;
+    body = buildMultipartBody(data, files);
+  } else if (method !== "GET" && method !== "HEAD" && options.data !== undefined) {
     if (options.jsonBody) {
       headers["Content-Type"] = "application/json";
       body = typeof options.data === "string" ? options.data : JSON.stringify(options.data);
@@ -312,7 +379,14 @@ export async function rawRequest(options: RawRequestOptions): Promise<{ status: 
     redirect: "follow",
     signal: AbortSignal.timeout(requestSettings.timeout),
   });
-  return { status: response.status, headers: response.headers, text: await response.text(), url: response.url };
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return {
+    status: response.status,
+    headers: response.headers,
+    text: new TextDecoder("utf-8").decode(buffer),
+    bytes: buffer,
+    url: response.url,
+  };
 }
 
 async function getSpibuvid(): Promise<{ b_3: string; b_4: string }> {
@@ -470,7 +544,7 @@ export class Api {
     this.sign = options.sign === true;
     this.data = {};
     this.params = {};
-    this.files = {};
+    this.files = options.files || {};
     this.headers = {};
     this.credential = options.credential || new Credential();
   }
@@ -482,6 +556,11 @@ export class Api {
 
   updateParams(params: Record<string, any>): this {
     this.params = params;
+    return this;
+  }
+
+  updateFiles(files: Record<string, BiliAPIFile>): this {
+    this.files = files;
     return this;
   }
 
@@ -543,6 +622,7 @@ export class Api {
       headers,
       cookies,
       jsonBody: this.json_body,
+      files: this.files as Record<string, BiliAPIFile>,
     };
   }
 
@@ -596,5 +676,16 @@ export class Api {
 
   get result(): Promise<any> {
     return this.request();
+  }
+
+  /**
+   * 二进制响应（例如弹幕协议 .so 文件）。与 Python 的 `request(byte=True)` 对应：
+   * 只检查 HTTP 状态码，返回原始字节，不做 JSON 解析。
+   */
+  async requestBytes(): Promise<Buffer> {
+    const config = await this.prepareRequest();
+    const response = await rawRequest(config);
+    if (response.status !== 200) throw new NetworkException(response.status, response.text);
+    return response.bytes;
   }
 }
