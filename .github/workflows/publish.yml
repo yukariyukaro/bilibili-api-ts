@@ -50,11 +50,14 @@ jobs:
           node -e "const expected=process.env.GITHUB_REF_NAME.replace(/^v/,''); const actual=require('./package.json').version; if(actual!==expected){console.error('tag='+expected+' package='+actual);process.exit(1)}"
 
       # 确认 OIDC 通道可用，并且本地没有残留的 _authToken 干扰。
+      # 关键诊断：GitHub 是否真的注入了 OIDC 端点，以及本地有没有残留 .npmrc。
       - name: Show auth environment
         run: |
-          echo "NODE_AUTH_TOKEN 是否为空: ${NODE_AUTH_TOKEN:+否}"
-          if [ -f .npmrc ]; then echo "--- .npmrc ---"; sed -E 's/(_authToken=).*/\1***/' .npmrc; else echo "无 .npmrc（正常，走 OIDC）"; fi
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL 是否可用: ${ACTIONS_ID_TOKEN_REQUEST_URL:+是}"
+          echo "::notice title=OIDC URL::${ACTIONS_ID_TOKEN_REQUEST_URL:+present}${ACTIONS_ID_TOKEN_REQUEST_URL:-absent}"
+          echo "::notice title=OIDC TOKEN::${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+present}${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-absent}"
+          echo "::notice title=npm::version=$(npm --version) registry=$(npm config get registry)"
+          echo "::notice title=NODE_AUTH_TOKEN::${NODE_AUTH_TOKEN:+present}${NODE_AUTH_TOKEN:-absent}"
+          if [ -f .npmrc ]; then echo "::notice title=npmrc::$(sed -E 's/(_authToken=).*/\1***/' .npmrc | tr '\n' ' ')"; else echo "::notice title=npmrc::none"; fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
