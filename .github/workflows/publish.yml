@@ -24,16 +24,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 注意：这里刻意不设置 registry-url。
+      # setup-node 的 registry-url 会写入 .npmrc 里的
+      #   //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}
+      # 当 NPM_TOKEN 未配置时它会变成空凭证，npm 因此不会走 OIDC，
+      # 表现为「publish 失败但看不出原因」。trusted publishing 必须让 npm 自己取 OIDC。
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
           cache: npm
           cache-dependency-path: bilibili-api-ts/package-lock.json
 
-      # Trusted publishing 需要 npm >= 11.5.1；这里固定到支持 npm trust 的 11.15.x。
+      # Trusted publishing 需要 npm >= 11.5.1。
       - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@^11.15.0
+        run: |
+          npm install -g npm@^11.15.0
+          npm --version
 
       - run: npm ci
 
@@ -43,33 +49,19 @@ jobs:
         run: |
           node -e "const expected=process.env.GITHUB_REF_NAME.replace(/^v/,''); const actual=require('./package.json').version; if(actual!==expected){console.error('tag='+expected+' package='+actual);process.exit(1)}"
 
+      # 确认 OIDC 通道可用，并且本地没有残留的 _authToken 干扰。
+      - name: Show auth environment
+        run: |
+          echo "NODE_AUTH_TOKEN 是否为空: ${NODE_AUTH_TOKEN:+否}"
+          if [ -f .npmrc ]; then echo "--- .npmrc ---"; sed -E 's/(_authToken=).*/\1***/' .npmrc; else echo "无 .npmrc（正常，走 OIDC）"; fi
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL 是否可用: ${ACTIONS_ID_TOKEN_REQUEST_URL:+是}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       # npm publish 的 prepublishOnly 还会再跑一次测试；这里显式跑一遍便于在 CI 日志定位。
       - run: npm test
 
       - run: npm pack --dry-run
 
-      # 先确认走哪条认证路径：配了 NPM_TOKEN 就用 token，否则交给 trusted publishing(OIDC)。
-      - name: Detect npm auth method
-        id: auth
-        run: |
-          if [ -n "${NODE_AUTH_TOKEN}" ]; then
-            echo "method=token" >> "$GITHUB_OUTPUT"
-            echo "使用 NPM_TOKEN"
-            npm whoami
-          else
-            echo "method=oidc" >> "$GITHUB_OUTPUT"
-            echo "::warning::未配置 NPM_TOKEN，改用 trusted publishing(OIDC)；需在 npmjs.com 为该包配置 GitHub 信任的发布者"
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # NPM_TOKEN：带 Bypass 2FA 的 Granular Access Token（Read and write，All packages）。
-      - name: Publish with token
-        if: steps.auth.outputs.method == 'token'
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish with trusted publishing
-        if: steps.auth.outputs.method == 'oidc'
+      - name: Publish (trusted publishing / OIDC)
         run: npm publish --access public --provenance
