@@ -384,10 +384,13 @@ test("弹幕：撤回与操作弹幕", async () => {
   const { DanmakuOperatorType } = require("../dist/video.js");
   await withStub(async ({ stub, credential }) => {
     const video = new Video({ bvid: "BV1xx411c7mD", credential });
-    await video.recall_danmaku({ cid: 999, dmid: 4321 });
+    // 数据层把这个接口标成 GET 且没有 verify；真实调用会 405 / -111，
+    // 所以移植成 POST + csrf（见 README「与 Python 有意不同的两处」）。
+    await video.recall_danmaku({ cid: 999, dmid: "4321" });
     const recall = stub.last("/x/dm/recall");
-    assert.equal(recall.method, "GET");
-    assert.ok(recall.url.includes("dmid=4321") && recall.url.includes("cid=999"), "GET 参数必须进 query");
+    assertWriteRequest(recall, "https://api.bilibili.com/x/dm/recall");
+    assert.equal(recall.body.fields.dmid, "4321");
+    assert.equal(recall.body.fields.cid, "999");
 
     await video.operate_danmaku({ cid: 999, dmids: [1, 2], type_: DanmakuOperatorType.DELETE });
     const operate = stub.last("/x/v2/dm/edit/state");
