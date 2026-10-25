@@ -810,9 +810,16 @@ export class Dynamic {
     return new Api({ ...api, credential: this.credential }).updateParams(params).result;
   }
 
-  /** 获取 rid，可作为 comment.get_comments_lazy 等函数的 oid 参数。 */
-  async get_rid(): Promise<number> {
-    return Number((await this.get_info())["item"]["basic"]["rid_str"]);
+  /**
+   * 获取 rid，可作为 comment.get_comments_lazy 等函数的 oid 参数。
+   *
+   * 动态/内容 ID 是 19 位，超出 JS 安全整数范围；直接 Number() 会丢低位
+   * （实测 1262859267144155140 被转成 1262859267144155100），因此超出时返回字符串。
+   */
+  async get_rid(): Promise<number | string> {
+    const rid = String((await this.get_info())["item"]["basic"]["rid_str"]);
+    const asNumber = Number(rid);
+    return Number.isSafeInteger(asNumber) ? asNumber : rid;
   }
 
   /** 获取动态点赞列表。 */
@@ -983,11 +990,25 @@ export async function get_dynamic_page_info(
   };
   if (offset) params["offset"] = offset;
   if (_type) {
-    // 全部动态
+    // 全部动态（关注流）
     params["type"] = _type;
   } else if (host_mid) {
-    // 指定 UP 主动态
-    params["host_mid"] = host_mid;
+    // 指定 UP 主动态。
+    // 注意：feed/all 带 host_mid 现在一律返回空列表（2026-10 实测 update_num=0、items=[]），
+    // 空间动态已迁到 feed/space；这里改走可用的接口，否则「看某个 UP 的动态」永远是空的。
+    const spaceApi = {
+      url: "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space",
+      method: "GET",
+      comment: "查看指定 UP 主的空间动态",
+    };
+    const spaceParams: Record<string, any> = {
+      host_mid,
+      offset: offset ?? "",
+      timezone_offset: -480,
+      features,
+      web_location: "333.1387",
+    };
+    return new Api({ ...spaceApi, credential }).updateParams(spaceParams).result;
   }
 
   return new Api({ ...api, credential }).updateParams(params).result;

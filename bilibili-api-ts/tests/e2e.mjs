@@ -305,6 +305,118 @@ await step("动态详情（取动态页第一条）", async () => {
   return `id=${dyn.get_dynamic_id()} type=${detail?.item?.type ?? "n/a"}`;
 }, true);
 
+
+// ---------- 只读接口的真实调用（扩大覆盖） ----------
+
+await step("相关视频 / 充电 / 快照 / AI 总结（只读）", async () => {
+  if (!info) return "无可用视频";
+  const video = new Video({ bvid: info.bvid, credential });
+  const cid = info.cid || info.pages?.[0]?.cid;
+  const related = await video.get_related();
+  const charges = await video.get_chargers();
+  const forbidNote = await video.is_forbid_note();
+  const snapshot = await video.get_video_snapshot(cid, false, false);
+  const ai = await video.get_ai_conclusion({ cid });
+  return `related=${related?.length ?? 0} chargers=${charges?.list?.length ?? 0} forbidNote=${forbidNote} snapshot=${snapshot?.image?.length ?? 0} aiSum=${String(ai?.summary ?? ai?.model_result?.summary ?? "").length}`;
+}, true);
+
+await step("收藏夹内容（favorite_list 读取）", async () => {
+  const { get_video_favorite_list, get_video_favorite_list_content } = require("../dist/favorite_list.js");
+  const folders = await get_video_favorite_list(selfInfo.mid, null, credential);
+  const first = folders?.list?.[0];
+  if (!first) return "无收藏夹";
+  const content = await get_video_favorite_list_content(first.id, { credential });
+  return `folder=${first.title} medias=${content?.medias?.length ?? 0}`;
+}, true);
+
+await step("表情详情（emoji 读取）", async () => {
+  const { get_emoji_list, get_emoji_detail, get_all_emoji } = require("../dist/emoji.js");
+  const list = await get_emoji_list("reply", credential);
+  const pkg = list?.packages?.[0];
+  const all = await get_all_emoji("reply", credential);
+  // get_all_emoji 的真实结构是 user_panel_packages（不是 packages）
+  const panel = all?.user_panel_packages?.length ?? 0;
+  if (!pkg) return `panel=${panel}（无可用表情包）`;
+  const detail = await get_emoji_detail(pkg.id, "reply");
+  // get_emoji_detail 的真实结构是 { packages: [{ emote: [...] }] }
+  const emoteCount = detail?.packages?.[0]?.emote?.length ?? detail?.emote?.length ?? 0;
+  return `package=${pkg.text ?? pkg.id} emotes=${emoteCount} panel=${panel}`;
+}, true);
+
+await step("创作中心：趋势图 / 粉丝概览 / 最近弹幕（只读）", async () => {
+  const cc = require("../dist/creative_center.js");
+  const graph = await cc.get_graph(credential);
+  const fans = await cc.get_fan_overview(credential);
+  const dms = await cc.get_recently_danmakus(credential);
+  return `graphKeys=${Object.keys(graph ?? {}).length} fanKeys=${Object.keys(fans ?? {}).length} recentDms=${dms?.data?.result?.length ?? 0}`;
+}, true);
+
+await step("动态页列表（get_dynamic_page_list，指定 UP）", async () => {
+  const { get_dynamic_page_list } = require("../dist/dynamic.js");
+  // 用真实活跃 UP（2 = bishi）确保能拿到数据；自己的测试账号可能本来就没有动态
+  const uid = Number(process.env.BILIBILI_E2E_DYNAMIC_UID || 2);
+  const list = await get_dynamic_page_list(credential, { host_mid: uid });
+  return `uid=${uid} items=${list?.length ?? 0}`;
+}, true);
+
+await step("动态详情与 rid 精度（19 位 ID 不能丢位）", async () => {
+  const { Dynamic, get_dynamic_page_info } = require("../dist/dynamic.js");
+  const uid = Number(process.env.BILIBILI_E2E_DYNAMIC_UID || 2);
+  const page = await get_dynamic_page_info(credential, { host_mid: uid });
+  const first = page?.items?.[0];
+  if (!first) return "无动态可读";
+  const dyn = new Dynamic(first.id_str, credential);
+  const detail = await dyn.get_info();
+  const rid = await dyn.get_rid();
+  const exact = String(first.id_str) === String(dyn.get_dynamic_id());
+  return `type=${detail?.item?.type} rid=${rid}(${typeof rid}) idExact=${exact}`;
+}, true);
+
+await step("合集元数据与合集内视频（ChannelSeries）", async () => {
+  const { ChannelSeries, ChannelSeriesType } = require("../dist/channel_series.js");
+  const { User: U } = require("../dist/index.js");
+  const uid = Number(process.env.BILIBILI_E2E_UID || info?.owner?.mid || selfInfo.mid);
+  const user = new U(uid, credential);
+  const channelList = await user.get_channel_list();
+  const season = channelList?.items_lists?.seasons_list?.[0];
+  if (!season) return "该用户没有公开合集";
+  const id = season.meta.season_id;
+  const series = new ChannelSeries(uid, ChannelSeriesType.SEASON, id, credential);
+  const meta = await series.get_meta();
+  const videos = await series.get_videos();
+  return `season=${meta?.name ?? id} videos=${videos?.archives?.length ?? 0}`;
+}, true);
+
+await step("特殊弹幕（get_special_dms，只读）", async () => {
+  if (!info) return "无可用视频";
+  const video = new Video({ bvid: info.bvid, credential });
+  const cid = info.cid || info.pages?.[0]?.cid;
+  const special = await video.get_special_dms({ cid });
+  return `special=${special.length}`;
+}, true);
+
+await step("弹幕点赞状态查询（has_liked_danmakus，只读）", async () => {
+  if (!info) return "无可用视频";
+  const video = new Video({ bvid: info.bvid, credential });
+  const cid = info.cid || info.pages?.[0]?.cid;
+  const list = await video.get_danmakus({ cid, from_seg: 0, to_seg: 0 });
+  const ids = list.slice(0, 5).map((item) => Number(item.id_str || item.id_));
+  const result = await video.has_liked_danmakus({ cid, ids });
+  // 真实结构是以弹幕 ID 为 key 的字典，每项含 likes / user_like
+  const entries = result && typeof result === "object" ? Object.entries(result) : [];
+  const userLiked = entries.filter(([, value]) => value && value.user_like).length;
+  return `checked=${ids.length} returned=${entries.length} userLiked=${userLiked}`;
+}, true);
+
+await step("历史弹幕索引（get_history_danmaku_index，只读）", async () => {
+  if (!info) return "无可用视频";
+  const video = new Video({ bvid: info.bvid, credential });
+  const cid = info.cid || info.pages?.[0]?.cid;
+  const date = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const index = await video.get_history_danmaku_index({ cid, date });
+  return `days=${Array.isArray(index) ? index.length : index === null ? "none" : "n/a"}`;
+}, true);
+
 const failed = results.filter((item) => !item.ok);
 process.stdout.write(`\n完成 ${results.length} 项，失败 ${failed.length} 项\n`);
 if (failed.length) process.exit(1);
