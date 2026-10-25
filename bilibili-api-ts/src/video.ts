@@ -725,7 +725,7 @@ export class Video {
   }
 
   /** 点赞 / 取消点赞弹幕。 */
-  async like_danmaku(options: { page_index?: number | null; dmid?: number | null; status?: boolean; cid?: number | null } = {}): Promise<any> {
+  async like_danmaku(options: { page_index?: number | null; dmid?: number | string | null; status?: boolean; cid?: number | null } = {}): Promise<any> {
     const { page_index = null, dmid = null, status = true, cid = null } = options;
     if (dmid === null || dmid === undefined) throw new ArgsException("请提供 dmid 参数");
     this.credential.raiseForNoSessdata();
@@ -745,7 +745,7 @@ export class Video {
   async operate_danmaku(
     options: {
       page_index?: number | null;
-      dmids?: number[] | null;
+      dmids?: Array<number | string> | null;
       cid?: number | null;
       type_?: DanmakuOperatorType | null;
     } = {},
@@ -778,7 +778,7 @@ export class Video {
   }
 
   /** 撤回弹幕。 */
-  async recall_danmaku(options: { page_index?: number | null; dmid?: number; cid?: number | null } = {}): Promise<any> {
+  async recall_danmaku(options: { page_index?: number | null; dmid?: number | string; cid?: number | null } = {}): Promise<any> {
     const { page_index = null, dmid = 0, cid = null } = options;
     let actualCid = cid;
     if (actualCid === null || actualCid === undefined) {
@@ -787,10 +787,11 @@ export class Video {
     }
     this.credential.raiseForNoSessdata();
     this.credential.raiseForNoBiliJct();
-    const api = API.danmaku.recall;
-    // Python 把这个 GET 的参数放在 body 里；这里按 GET 语义放进 query，否则参数会丢。
+    // 数据层把 recall 标成 GET，但 B 站只接受 POST —— 用 GET 会直接 HTTP 405。
+    // 同时该接口必须带 csrf（而数据层没有 verify: true），实测缺 csrf 会返回 -111。
+    const api = { ...API.danmaku.recall, method: "POST", verify: true };
     return new Api({ ...api, credential: this.credential })
-      .updateParams({ dmid, cid: actualCid })
+      .updateData({ dmid, cid: actualCid })
       .result;
   }
 }

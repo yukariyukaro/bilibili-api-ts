@@ -121,7 +121,8 @@ await send_msg({ credential, receiver_id: 946974, msg_type: EventType.TEXT, cont
 ### 与 Python 有意不同的两处
 
 - `Video.get_danmakus` 按 protobuf 的 **wire type** 跳读未知字段。Python 版假设顶层只会出现字段 1；真实响应里出现过「字段号 1 + wire type 0」的变体，逐字移植会直接错位（Py 版同样会挂）。正常响应下解析结果完全一致。
-- `Video.recall_danmaku` 的参数放进 query；Python 版对 GET 请求仍放在 body 里，多数客户端/服务端会丢掉。
+- `Video.recall_danmaku` 用 **POST + csrf**：数据层把它标成 GET、且没有 `verify: true`，照抄会直接 HTTP 405 或 `-111 CSRF 校验失败`（真调实测）。
+- 弹幕相关的 ID（`dmid` / `dmids`）与动态 ID 按字符串传递：19 位 ID 超过 JS 安全整数范围，`Number()` 会静默丢低位（实测 `2230084331932957952` 变号，导致撤回无效）。
 
 ## 测试
 
