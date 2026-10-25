@@ -63,5 +63,19 @@ jobs:
 
       - run: npm pack --dry-run
 
+      # 失败时把 npm 的报错写成 annotation：没有 Actions 日志权限时也能定位原因。
       - name: Publish (trusted publishing / OIDC)
-        run: npm publish --access public --provenance
+        shell: bash
+        run: |
+          set -o pipefail
+          if npm publish --access public --provenance 2>&1 | tee publish.log; then
+            echo "::notice title=npm publish::ok"
+          else
+            code=$?
+            echo "::error title=npm publish 失败，退出码::$code"
+            echo "::error title=npm 环境::registry=$(npm config get registry) npm=$(npm --version)"
+            grep -m 8 -E "(npm error|ERR!|error code|EOTP|E401|ENEEDAUTH|403|404|provenance|trusted)" publish.log \
+              | sed -E 's/(_authToken=)[^ ]*/\1***/g' \
+              | while IFS= read -r line; do echo "::error title=npm error::$line"; done
+            exit "$code"
+          fi
